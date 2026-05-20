@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # SmartPDF AI Assistant
 
 Offline PDF assistant built with Streamlit, SQLAlchemy, local document search, study tools, exports, and optional cloud mirroring.
@@ -66,3 +67,7 @@ streamlit run app.py --server.address 0.0.0.0 --server.port 8501
 - Voice transcription runs offline through `SpeechRecognition` with `pocketsphinx`.
 - DOCX export uses `python-docx`.
 - Existing chat history, saved documents, and database records are preserved.
+=======
+# AI_Study_Assistant
+An AI-powered Smart PDF Assistant web application that allows users to upload PDFs, chat with documents in a ChatGPT-style interface, use voice assistance, generate summaries/MCQs/notes, scan documents via camera or gallery, and get intelligent answers through offline PDF search with a modern responsive UI.
+>>>>>>> 801819a7ca8d20f9677ade3a1f6b44a6c982d1bc

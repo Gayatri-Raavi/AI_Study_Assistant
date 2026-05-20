@@ -7,6 +7,8 @@ import os
 import re
 import secrets
 import shutil
+import sqlite3
+import tempfile
 import textwrap
 import uuid
 from collections import Counter
@@ -49,11 +51,6 @@ except ModuleNotFoundError:
 
 APP_TITLE = "SmartPDF AI Assistant"
 BASE_DIR = Path(__file__).resolve().parent
-DATA_DIR = BASE_DIR / "data"
-UPLOAD_DIR = DATA_DIR / "uploads"
-VECTOR_DIR = DATA_DIR / "vectors"
-CLOUD_DIR = Path(os.getenv("CLOUD_STORAGE_DIR", (DATA_DIR / "cloud").as_posix()))
-DATABASE_URL = os.getenv("DATABASE_URL", f"sqlite:///{(DATA_DIR / 'smartpdf.db').as_posix()}")
 LOCAL_PROVIDER = "local"
 DEFAULT_PROVIDER = LOCAL_PROVIDER
 DEFAULT_EMBEDDING_MODEL = "offline-keyword-search"
@@ -172,6 +169,44 @@ class Message(Base):
     chat: Mapped[Chat] = relationship(back_populates="messages")
 
 
+def is_writable_dir(path: Path) -> bool:
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        probe = path / ".write_test"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink()
+        return True
+    except OSError:
+        return False
+
+
+def resolve_data_dir() -> Path:
+    configured_dir = os.getenv("APP_DATA_DIR")
+    if configured_dir:
+        return Path(configured_dir).expanduser().resolve()
+
+    local_data_dir = BASE_DIR / "data"
+    if is_writable_dir(local_data_dir):
+        return local_data_dir
+
+    return (Path(tempfile.gettempdir()) / "smartpdf_ai_assistant" / "data").resolve()
+
+
+def resolve_database_url(data_dir: Path) -> str:
+    configured_url = os.getenv("DATABASE_URL", "").strip()
+    if configured_url:
+        return configured_url
+    sqlite_path = (data_dir / "smartpdf.db").resolve()
+    return f"sqlite:///{sqlite_path.as_posix()}"
+
+
+DATA_DIR = resolve_data_dir()
+UPLOAD_DIR = DATA_DIR / "uploads"
+VECTOR_DIR = DATA_DIR / "vectors"
+CLOUD_DIR = Path(os.getenv("CLOUD_STORAGE_DIR", str((DATA_DIR / "cloud").resolve()))).expanduser().resolve()
+DATABASE_URL = resolve_database_url(DATA_DIR)
+
+
 def ensure_storage() -> None:
     for folder in (DATA_DIR, UPLOAD_DIR, VECTOR_DIR, CLOUD_DIR):
         folder.mkdir(parents=True, exist_ok=True)
@@ -201,6 +236,22 @@ def db_session() -> Iterable[Session]:
 
 
 def init_db() -> None:
+    if DATABASE_URL.startswith("sqlite"):
+        sqlite_db_path = Path(ENGINE.url.database).resolve()
+        sqlite_db_path.parent.mkdir(parents=True, exist_ok=True)
+        if not is_writable_dir(sqlite_db_path.parent):
+            raise RuntimeError(
+                f"SQLite directory is not writable: {sqlite_db_path.parent}. "
+                "Set APP_DATA_DIR to a writable folder or configure DATABASE_URL for PostgreSQL."
+            )
+        try:
+            with sqlite3.connect(sqlite_db_path.as_posix()):
+                pass
+        except sqlite3.OperationalError as exc:
+            raise RuntimeError(
+                f"SQLite database could not be opened at {sqlite_db_path}. "
+                "Use a writable path such as /tmp on Streamlit Cloud or switch to PostgreSQL."
+            ) from exc
     Base.metadata.create_all(ENGINE)
     migrate_legacy_schema()
 
